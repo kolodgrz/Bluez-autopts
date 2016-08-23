@@ -96,6 +96,22 @@ struct gap_set_powered_rp {
 	uint32_t current_settings;
 } __attribute__((packed));
 
+#define GAP_START_ADVERTISING	0x0a
+struct gap_start_advertising_cmd {
+	uint8_t adv_data_len;
+	uint8_t scan_rsp_len;
+	uint8_t adv_data[0];
+	uint8_t scan_rsp[0];
+} __attribute__((packed));
+struct gap_start_advertising_rp {
+	uint32_t current_settings;
+} __attribute__((packed));
+
+#define GAP_STOP_ADVERTISING		0x0b
+struct gap_stop_advertising_rp {
+	uint32_t current_settings;
+} __attribute__((packed));
+
 static inline void tester_set_bit(uint8_t *addr, unsigned int bit)
 {
 	uint8_t *p = addr + (bit / 8);
@@ -110,6 +126,7 @@ void send_msg(uint8_t service, uint8_t opcode, uint8_t index, uint16_t len,
 void send_status(uint8_t service, uint8_t opcode, uint8_t index,
 								uint8_t status);
 void register_prop_cb(const char *iface, char *prop, void cb(void));
+uint8_t handle_gap_register(DBusConnection *dbus_conn);
 void handle_gap(GDBusProxy *adapter_proxy, GDBusProxy *adv_proxy, uint8_t op,
 						uint8_t *data, uint16_t len);
 
