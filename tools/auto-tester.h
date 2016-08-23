@@ -112,6 +112,20 @@ struct gap_stop_advertising_rp {
 	uint32_t current_settings;
 } __attribute__((packed));
 
+#define GAP_CONNECT			0x0e
+struct gap_connect_cmd {
+	uint8_t address_type;
+	uint8_t address[6];
+} __attribute__((packed));
+
+/* GAP Events*/
+
+#define GAP_EV_DEVICE_CONNECTED		0x82
+struct gap_device_connected_ev {
+	uint8_t address[6];
+	uint8_t address_type;
+} __attribute__((packed));
+
 static inline void tester_set_bit(uint8_t *addr, unsigned int bit)
 {
 	uint8_t *p = addr + (bit / 8);
@@ -127,7 +141,7 @@ void send_status(uint8_t service, uint8_t opcode, uint8_t index,
 								uint8_t status);
 void register_prop_cb(const char *iface, char *prop, void cb(void));
 uint8_t handle_gap_register(DBusConnection *dbus_conn);
-void handle_gap(GDBusProxy *adapter_proxy, GDBusProxy *adv_proxy, uint8_t op,
-						uint8_t *data, uint16_t len);
+void handle_gap(GDBusProxy *adapter_proxy, GDBusProxy *adv_proxy,
+		GSList *dev_list, uint8_t op, uint8_t *data, uint16_t len);
 
 uint32_t get_current_settings();
