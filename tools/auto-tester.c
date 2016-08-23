@@ -50,6 +50,7 @@ static GDBusProxy *adv_proxy;
 static DBusConnection *dbus_conn;
 
 uint32_t current_settings;
+static GSList *prop_cbs = NULL;
 
 static void connect_handler(DBusConnection *connection, void *user_data)
 {
@@ -95,12 +96,76 @@ static void proxy_removed(GDBusProxy *proxy, void *user_data)
 		printf("DBUS Proxy removed: %s\n", interface);
 }
 
+struct prop_cb {
+	char *iface;
+	char *prop;
+	void (*cb_func)(void);
+};
+
+void register_prop_cb(const char *iface, char *prop, void (*cb_func)(void))
+{
+	struct prop_cb *p;
+
+	p = malloc(sizeof(*p));
+
+	p->iface = strdup(iface);
+	p->prop = strdup(prop);
+	p->cb_func = cb_func;
+
+	prop_cbs = g_slist_append(prop_cbs, p);
+}
+
+static void prop_cmp_foreach(gpointer data, gpointer user_data)
+{
+	struct prop_cb *a = (struct prop_cb*) data;
+	struct prop_cb *b = (struct prop_cb*) user_data;
+
+	if (strcmp(a->iface, b->iface))
+		return;
+
+	if (strcmp(a->prop, b->prop))
+		return;
+
+	a->cb_func();
+
+	free(a->iface);
+	free(a->prop);
+	free(a);
+
+	prop_cbs = g_slist_remove(prop_cbs, data);
+}
+
+static void change_current_setting(uint8_t bit, bool set)
+{
+	if (set)
+		current_settings |= 1 << bit;
+	else
+		current_settings &= ~(1 << bit);
+}
+
 static void property_changed(GDBusProxy *proxy, const char *name,
 					DBusMessageIter *iter, void *user_data)
 {
+	dbus_bool_t valbool;
 	const char *interface;
+	struct prop_cb p;
 
 	interface = g_dbus_proxy_get_interface(proxy);
+
+	if (!strcmp(interface, "org.bluez.Adapter1")) {
+		if (!strcmp(name, "Powered")) {
+			dbus_message_iter_get_basic(iter, &valbool);
+			change_current_setting(GAP_SETTINGS_POWERED, valbool);
+		}
+	}
+
+	p.iface = strdup(interface);
+	p.prop = strdup(name);
+
+	g_slist_foreach(prop_cbs, prop_cmp_foreach, &p);
+
+	free(p.prop);
+	free(p.iface);
 
 	if (verbose)
 		printf("DBUS Property changed, %s - %s\n", interface, name);
@@ -188,14 +253,6 @@ static void supported_services(uint8_t *data, uint16_t len)
 
 	send_msg(BTP_SERVICE_ID_CORE, CORE_READ_SUPPORTED_SERVICES,
 				BTP_INDEX_NONE, sizeof(buf), (uint8_t *) rp);
-}
-
-static void change_current_setting(uint8_t bit, bool set)
-{
-	if (set)
-		current_settings |= 1 << bit;
-	else
-		current_settings &= ~(1 << bit);
 }
 
 static int read_current_settings()

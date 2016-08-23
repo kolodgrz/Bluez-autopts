@@ -27,8 +27,11 @@
 
 #include "gdbus/gdbus.h"
 #include "auto-tester.h"
+#include "src/shared/util.h"
 
 #define CONTROLLER_INDEX 0
+
+#define CHECK_BIT(var,pos) ((var) & (1<<(pos)))
 
 static void supported_commands()
 {
@@ -43,12 +46,68 @@ static void supported_commands()
 				CONTROLLER_INDEX, sizeof(cmds), (uint8_t *) rp);
 }
 
+static void verify_err(const DBusError *error, void *user_data)
+{
+	uint8_t op = PTR_TO_UINT(user_data);
+
+	if (dbus_error_is_set(error))
+		send_status(BTP_SERVICE_ID_GAP, op, CONTROLLER_INDEX,
+							BTP_STATUS_FAILED);
+}
+
+static void set_powered_cb()
+{
+	struct gap_set_powered_rp rp;
+
+	rp.current_settings = gap_settings | get_current_settings();
+
+	send_msg(BTP_SERVICE_ID_GAP, GAP_SET_POWERED, CONTROLLER_INDEX,
+						sizeof(rp), (uint8_t *) &rp);
+}
+
+static void set_powered(GDBusProxy *adapter_proxy, uint8_t *data, uint16_t len)
+{
+	struct gap_set_powered_cmd *cmd = (void *) data;
+	struct gap_set_powered_rp rp;
+	const char *interface;
+	dbus_bool_t powered;
+
+	interface = g_dbus_proxy_get_interface(adapter_proxy);
+	if (!interface) {
+		send_status(BTP_SERVICE_ID_CORE, BTP_STATUS, CONTROLLER_INDEX,
+							BTP_STATUS_FAILED);
+		return;
+	}
+
+	if (cmd->powered)
+		powered = TRUE;
+	else
+		powered = FALSE;
+
+	rp.current_settings = gap_settings | get_current_settings();
+
+	if (CHECK_BIT(rp.current_settings, GAP_SETTINGS_POWERED) == powered) {
+		send_msg(BTP_SERVICE_ID_GAP, GAP_SET_POWERED, CONTROLLER_INDEX,
+						sizeof(rp), (uint8_t *) &rp);
+		return;
+	}
+
+	register_prop_cb(interface, "Powered", set_powered_cb);
+
+	g_dbus_proxy_set_property_basic(adapter_proxy, "Powered",
+					DBUS_TYPE_BOOLEAN, &powered, verify_err,
+					UINT_TO_PTR(GAP_SET_POWERED), NULL);
+}
+
 void handle_gap(GDBusProxy *adapter_proxy, GDBusProxy *adv_proxy, uint8_t op,
 						uint8_t *data, uint16_t len)
 {
 	switch (op) {
 	case GAP_READ_SUPPORTED_COMMANDS:
 		supported_commands();
+		break;
+	case GAP_SET_POWERED:
+		set_powered(adapter_proxy, data, len);
 		break;
 	default:
 		send_status(BTP_SERVICE_ID_GAP, op, CONTROLLER_INDEX,
