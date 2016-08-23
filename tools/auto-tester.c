@@ -46,6 +46,7 @@ static int btp_fd = 0;
 
 static GMainLoop *main_loop;
 static GDBusProxy *adapter_proxy;
+static GDBusProxy *adv_proxy;
 static DBusConnection *dbus_conn;
 
 uint32_t current_settings;
@@ -77,6 +78,8 @@ static void proxy_added(GDBusProxy *proxy, void *user_data)
 
 	if (!strcmp(interface, "org.bluez.Adapter1"))
 		adapter_proxy = proxy;
+	else if (!strcmp(interface, "org.bluez.LEAdvertisingManager1"))
+		adv_proxy = proxy;
 
 	if (verbose)
 		printf("DBUS Proxy added: %s\n", interface);
@@ -187,6 +190,70 @@ static void supported_services(uint8_t *data, uint16_t len)
 				BTP_INDEX_NONE, sizeof(buf), (uint8_t *) rp);
 }
 
+static void change_current_setting(uint8_t bit, bool set)
+{
+	if (set)
+		current_settings |= 1 << bit;
+	else
+		current_settings &= ~(1 << bit);
+}
+
+static int read_current_settings()
+{
+	DBusMessageIter iter;
+	dbus_bool_t powered, discoverable, pairable;
+
+	// TODO - Get rest of settings from stack
+
+	if (!g_dbus_proxy_get_property(adapter_proxy, "Powered", &iter))
+		return -1;
+	dbus_message_iter_get_basic(&iter, &powered);
+
+	if (!g_dbus_proxy_get_property(adapter_proxy, "Discoverable", &iter))
+		return -1;
+	dbus_message_iter_get_basic(&iter, &discoverable);
+
+	if (!g_dbus_proxy_get_property(adapter_proxy, "Pairable", &iter))
+		return -1;
+	dbus_message_iter_get_basic(&iter, &pairable);
+
+	change_current_setting(GAP_SETTINGS_POWERED, powered);
+	change_current_setting(GAP_SETTINGS_DISCOVERABLE, discoverable);
+	change_current_setting(GAP_SETTINGS_BONDABLE, pairable);
+
+	return 0;
+}
+
+uint32_t get_current_settings()
+{
+	return current_settings;
+}
+
+static void core_reg_svc(uint8_t *data, uint16_t len)
+{
+	struct core_register_service_cmd *cmd = (void *) data;
+	uint8_t status;
+
+	switch (cmd->id) {
+	case BTP_SERVICE_ID_GAP:
+		if (read_current_settings()) {
+			status = BTP_STATUS_FAILED;
+			break;
+		}
+		status = BTP_STATUS_SUCCESS;
+		break;
+	default:
+		status = BTP_STATUS_FAILED;
+	}
+
+	if (status == BTP_STATUS_FAILED)
+		send_status(BTP_SERVICE_ID_CORE, BTP_STATUS, BTP_INDEX_NONE,
+									status);
+	else
+		send_status(BTP_SERVICE_ID_CORE, CORE_REGISTER_SERVICE,
+						BTP_INDEX_NONE, status);
+}
+
 static void handle_core(uint8_t op, uint8_t *data, uint16_t len)
 {
 	switch (op) {
@@ -195,6 +262,9 @@ static void handle_core(uint8_t op, uint8_t *data, uint16_t len)
 		break;
 	case CORE_READ_SUPPORTED_SERVICES:
 		supported_services(data, len);
+		break;
+	case CORE_REGISTER_SERVICE:
+		core_reg_svc(data, len);
 		break;
 	default:
 		send_status(BTP_SERVICE_ID_CORE, BTP_STATUS, BTP_INDEX_NONE,
@@ -207,6 +277,9 @@ static void handle_msg(struct btp_hdr *hdr, uint8_t *data, uint16_t len)
 	switch (hdr->service) {
 	case BTP_SERVICE_ID_CORE:
 		handle_core(hdr->opcode, data, len);
+		break;
+	case BTP_SERVICE_ID_GAP:
+		handle_gap(adapter_proxy, adv_proxy, hdr->opcode, data, len);
 		break;
 	default:
 		send_status(hdr->service, BTP_STATUS, hdr->index,
