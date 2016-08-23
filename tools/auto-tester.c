@@ -47,6 +47,7 @@ static int btp_fd = 0;
 static GMainLoop *main_loop;
 static GDBusProxy *adapter_proxy;
 static GDBusProxy *adv_proxy;
+static GSList *dev_list;
 static DBusConnection *dbus_conn;
 
 uint32_t current_settings;
@@ -60,6 +61,9 @@ static void connect_handler(DBusConnection *connection, void *user_data)
 
 static void disconnect_handler(DBusConnection *connection, void *user_data)
 {
+	g_slist_free(dev_list);
+	dev_list = NULL;
+
 	if (verbose)
 		printf("Disconnected from DBUS\n");
 }
@@ -81,6 +85,8 @@ static void proxy_added(GDBusProxy *proxy, void *user_data)
 		adapter_proxy = proxy;
 	else if (!strcmp(interface, "org.bluez.LEAdvertisingManager1"))
 		adv_proxy = proxy;
+	else if (!strcmp(interface, "org.bluez.Device1"))
+		dev_list = g_slist_append(dev_list, proxy);
 
 	if (verbose)
 		printf("DBUS Proxy added: %s\n", interface);
@@ -91,6 +97,9 @@ static void proxy_removed(GDBusProxy *proxy, void *user_data)
 	const char *interface;
 
 	interface = g_dbus_proxy_get_interface(proxy);
+
+	if (!strcmp(interface, "org.bluez.Device1"))
+		dev_list = g_slist_remove(dev_list, proxy);
 
 	if (verbose)
 		printf("DBUS Proxy removed: %s\n", interface);
@@ -336,7 +345,8 @@ static void handle_msg(struct btp_hdr *hdr, uint8_t *data, uint16_t len)
 		handle_core(hdr->opcode, data, len);
 		break;
 	case BTP_SERVICE_ID_GAP:
-		handle_gap(adapter_proxy, adv_proxy, hdr->opcode, data, len);
+		handle_gap(adapter_proxy, adv_proxy, dev_list, hdr->opcode,
+								data, len);
 		break;
 	default:
 		send_status(hdr->service, BTP_STATUS, hdr->index,

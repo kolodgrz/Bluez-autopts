@@ -231,7 +231,9 @@ tools_mpris_proxy_SOURCES = tools/mpris-proxy.c
 tools_mpris_proxy_LDADD = gdbus/libgdbus-internal.la @GLIB_LIBS@ @DBUS_LIBS@
 
 tools_auto_tester_SOURCES = tools/auto-tester.c tools/auto-tester-gap.c
-tools_auto_tester_LDADD = gdbus/libgdbus-internal.la @GLIB_LIBS@ @DBUS_LIBS@
+tools_auto_tester_LDADD = lib/libbluetooth-internal.la \
+				gdbus/libgdbus-internal.la \
+				@GLIB_LIBS@ @DBUS_LIBS@
 
 dist_man_MANS += tools/hciattach.1 tools/hciconfig.1 \
 			tools/hcitool.1 tools/hcidump.1 \
