@@ -297,7 +297,7 @@ static void core_reg_svc(uint8_t *data, uint16_t len)
 			status = BTP_STATUS_FAILED;
 			break;
 		}
-		status = BTP_STATUS_SUCCESS;
+		status = handle_gap_register(dbus_conn);
 		break;
 	default:
 		status = BTP_STATUS_FAILED;
