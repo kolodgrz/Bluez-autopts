@@ -88,6 +88,14 @@ struct gap_read_supported_commands_rp {
 #define GAP_SETTINGS_CONTROLLER_CONFIG	14
 #define GAP_SETTINGS_STATIC_ADDRESS	15
 
+#define GAP_SET_POWERED			0x05
+struct gap_set_powered_cmd {
+	uint8_t powered;
+} __attribute__((packed));
+struct gap_set_powered_rp {
+	uint32_t current_settings;
+} __attribute__((packed));
+
 static inline void tester_set_bit(uint8_t *addr, unsigned int bit)
 {
 	uint8_t *p = addr + (bit / 8);
@@ -101,6 +109,7 @@ void send_msg(uint8_t service, uint8_t opcode, uint8_t index, uint16_t len,
 								uint8_t *data);
 void send_status(uint8_t service, uint8_t opcode, uint8_t index,
 								uint8_t status);
+void register_prop_cb(const char *iface, char *prop, void cb(void));
 void handle_gap(GDBusProxy *adapter_proxy, GDBusProxy *adv_proxy, uint8_t op,
 						uint8_t *data, uint16_t len);
 
