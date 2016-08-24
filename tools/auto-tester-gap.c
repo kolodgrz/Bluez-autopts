@@ -76,6 +76,43 @@ static void verify_err(const DBusError *error, void *user_data)
 							BTP_STATUS_FAILED);
 }
 
+static void read_controller_info(GDBusProxy *proxy)
+{
+	struct gap_read_controller_info_rp rp;
+	const char *name, *addr;
+	bdaddr_t ba;
+	DBusMessageIter iter;
+
+	// TODO Add short name getter
+	// TODO Add cod getter
+	// TODO Add supported settings getter
+
+	if (g_dbus_proxy_get_property(proxy, "Address", &iter) == FALSE)
+		goto failed;
+	dbus_message_iter_get_basic(&iter, &addr);
+
+	rp.current_settings = gap_settings | get_current_settings();
+
+	if (g_dbus_proxy_get_property(proxy, "Name", &iter) == FALSE)
+		goto failed;
+	dbus_message_iter_get_basic(&iter, &name);
+
+	memset(&rp, 0, sizeof(rp));
+
+	str2ba(addr, &ba);
+
+	memcpy(rp.address, ba.b, sizeof(ba.b));
+	memcpy(rp.name, name, strlen(name));
+
+	send_msg(BTP_SERVICE_ID_GAP, GAP_READ_CONTROLLER_INFO, CONTROLLER_INDEX,
+						sizeof(rp), (uint8_t *) &rp);
+	return;
+
+failed:
+	send_status(BTP_SERVICE_ID_GAP, GAP_READ_CONTROLLER_INFO,
+					CONTROLLER_INDEX, BTP_STATUS_FAILED);
+}
+
 static void set_powered_cb()
 {
 	struct gap_set_powered_rp rp;
@@ -536,6 +573,9 @@ void handle_gap(GDBusProxy *adapter_proxy, GDBusProxy *adv_proxy,
 	switch (op) {
 	case GAP_READ_SUPPORTED_COMMANDS:
 		supported_commands();
+		break;
+	case GAP_READ_CONTROLLER_INFO:
+		read_controller_info(adapter_proxy);
 		break;
 	case GAP_SET_POWERED:
 		set_powered(adapter_proxy, data, len);

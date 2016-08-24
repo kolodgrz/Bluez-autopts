@@ -88,6 +88,16 @@ struct gap_read_supported_commands_rp {
 #define GAP_SETTINGS_CONTROLLER_CONFIG	14
 #define GAP_SETTINGS_STATIC_ADDRESS	15
 
+#define GAP_READ_CONTROLLER_INFO	0x03
+struct gap_read_controller_info_rp {
+	uint8_t  address[6];
+	uint32_t supported_settings;
+	uint32_t current_settings;
+	uint8_t  cod[3];
+	uint8_t  name[249];
+	uint8_t  short_name[11];
+} __packed;
+
 #define GAP_SET_POWERED			0x05
 struct gap_set_powered_cmd {
 	uint8_t powered;
