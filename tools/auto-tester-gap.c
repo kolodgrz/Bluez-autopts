@@ -463,6 +463,66 @@ reply:
 	send_status(BTP_SERVICE_ID_GAP, GAP_CONNECT, CONTROLLER_INDEX, status);
 }
 
+static void disconnect_reply(DBusMessage *message, void *user_data)
+{
+	GDBusProxy *proxy = user_data;
+	DBusError error;
+	DBusMessageIter addr_iter;
+
+	dbus_error_init(&error);
+
+	if (dbus_set_error_from_message(&error, message) == TRUE) {
+		if (verbose)
+			printf("Failed to disconnect: %s\n", error.name);
+
+		dbus_error_free(&error);
+		send_status(BTP_SERVICE_ID_GAP, GAP_EV_DEVICE_DISCONNECTED,
+					CONTROLLER_INDEX, BTP_STATUS_FAILED);
+		return;
+	}
+
+	if (g_dbus_proxy_get_property(proxy, "Address", &addr_iter) == TRUE) {
+		struct gap_device_disconnected_ev ev;
+		const char *str;
+
+		dbus_message_iter_get_basic(&addr_iter, &str);
+
+		/* FIXME: get address type */
+		ev.address_type = 0x00;
+		str2ba(str, (bdaddr_t *) ev.address);
+
+		send_msg(BTP_SERVICE_ID_GAP, GAP_EV_DEVICE_DISCONNECTED,
+				CONTROLLER_INDEX, sizeof(ev), (uint8_t *) &ev);
+	}
+}
+
+static void handle_disconnect(GSList *dev_list, uint8_t *data, uint16_t len)
+{
+	const struct gap_disconnect_cmd *cmd = (void *) data;
+	GDBusProxy *device_proxy;
+	bdaddr_t addr;
+	uint8_t status = BTP_STATUS_FAILED;
+
+	baswap(&addr, (bdaddr_t *) cmd->address);
+
+	device_proxy = find_device_by_address(&addr, dev_list);
+	if (!device_proxy) {
+		/* TODO: Start discovery */
+		goto reply;
+	}
+
+	if (g_dbus_proxy_method_call(device_proxy, "Disconnect", NULL,
+						disconnect_reply, device_proxy,
+						NULL) == FALSE) {
+		goto reply;
+	}
+
+	status = BTP_STATUS_SUCCESS;
+reply:
+	send_status(BTP_SERVICE_ID_GAP, GAP_DISCONNECT, CONTROLLER_INDEX,
+									status);
+}
+
 uint8_t handle_gap_register(DBusConnection *conn)
 {
 	dbus_conn = conn;
@@ -488,6 +548,9 @@ void handle_gap(GDBusProxy *adapter_proxy, GDBusProxy *adv_proxy,
 		break;
 	case GAP_CONNECT:
 		handle_connect(dev_list, data, len);
+		break;
+	case GAP_DISCONNECT:
+		handle_disconnect(dev_list, data, len);
 		break;
 	default:
 		send_status(BTP_SERVICE_ID_GAP, op, CONTROLLER_INDEX,
