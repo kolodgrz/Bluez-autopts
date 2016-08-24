@@ -118,10 +118,22 @@ struct gap_connect_cmd {
 	uint8_t address[6];
 } __attribute__((packed));
 
+#define GAP_DISCONNECT			0x0f
+struct gap_disconnect_cmd {
+	uint8_t  address_type;
+	uint8_t  address[6];
+} __attribute__((packed));
+
 /* GAP Events*/
 
 #define GAP_EV_DEVICE_CONNECTED		0x82
 struct gap_device_connected_ev {
+	uint8_t address[6];
+	uint8_t address_type;
+} __attribute__((packed));
+
+#define GAP_EV_DEVICE_DISCONNECTED	0x83
+struct gap_device_disconnected_ev {
 	uint8_t address[6];
 	uint8_t address_type;
 } __attribute__((packed));
