@@ -132,6 +132,8 @@ struct gap_start_discovery_cmd {
 	uint8_t flags;
 } __attribute__((packed));
 
+#define GAP_STOP_DISCOVERY		0x0d
+
 #define GAP_CONNECT			0x0e
 struct gap_connect_cmd {
 	uint8_t address_type;

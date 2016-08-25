@@ -431,6 +431,42 @@ static void handle_start_discovery(GDBusProxy *adapter_proxy, uint8_t *data,
 							BTP_STATUS_FAILED);
 }
 
+static void stop_discovery_reply(DBusMessage *message, void *user_data)
+{
+	DBusError error;
+
+	dbus_error_init(&error);
+
+	if (dbus_set_error_from_message(&error, message) == TRUE) {
+		if (verbose)
+			printf("Failed to stop discovery: %s\n", error.name);
+		dbus_error_free(&error);
+
+		send_status(BTP_SERVICE_ID_GAP, GAP_STOP_DISCOVERY,
+					CONTROLLER_INDEX, BTP_STATUS_FAILED);
+		return;
+	}
+
+	if (verbose)
+		printf("Discovery stopped\n");
+
+	send_status(BTP_SERVICE_ID_GAP, GAP_STOP_DISCOVERY, CONTROLLER_INDEX,
+							BTP_STATUS_SUCCESS);
+}
+
+static void handle_stop_discovery(GDBusProxy *adapter_proxy, uint8_t *data,
+								uint16_t len)
+{
+	if (g_dbus_proxy_method_call(adapter_proxy, "StopDiscovery", NULL,
+							stop_discovery_reply,
+							NULL, NULL) == TRUE) {
+		return;
+	}
+
+	send_status(BTP_SERVICE_ID_GAP, GAP_STOP_DISCOVERY, CONTROLLER_INDEX,
+							BTP_STATUS_FAILED);
+}
+
 static GDBusProxy *find_device_by_address(const bdaddr_t *addr, GSList *list)
 {
 	GSList *l;
@@ -598,6 +634,9 @@ void handle_gap(GDBusProxy *adapter_proxy, GDBusProxy *adv_proxy,
 		break;
 	case GAP_START_DISCOVERY:
 		handle_start_discovery(adapter_proxy, data, len);
+		break;
+	case GAP_STOP_DISCOVERY:
+		handle_stop_discovery(adapter_proxy, data, len);
 		break;
 	case GAP_CONNECT:
 		handle_connect(dev_list, data, len);
