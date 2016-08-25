@@ -52,6 +52,7 @@ static DBusConnection *dbus_conn;
 
 uint32_t current_settings;
 static GSList *prop_cbs = NULL;
+static GSList *proxy_cbs;
 
 static void connect_handler(DBusConnection *connection, void *user_data)
 {
@@ -75,9 +76,64 @@ static void message_handler(DBusConnection *connection,
 		printf("Got signal from DBUS\n");
 }
 
+struct proxy_cbs {
+	char *iface;
+	void (*added_cb)(GDBusProxy *proxy);
+	void (*removed_cb)(GDBusProxy *proxy);
+};
+
+void register_proxy_cb(const char *iface, void (*added_cb)(GDBusProxy *proxy),
+					void (*removed_cb)(GDBusProxy *proxy))
+{
+	struct proxy_cbs *p;
+
+	p = malloc(sizeof(*p));
+
+	p->iface = strdup(iface);
+	p->added_cb = added_cb;
+	p->removed_cb = removed_cb;
+
+	proxy_cbs = g_slist_append(proxy_cbs, p);
+}
+
+static void unregister_proxy_cb_foreach(gpointer data, gpointer user_data)
+{
+	struct proxy_cbs *a = (struct proxy_cbs*) data;
+	struct proxy_cbs *b = (struct proxy_cbs*) user_data;
+
+	if (strcmp(a->iface, b->iface))
+		return;
+
+	if (a->added_cb && a->added_cb != b->added_cb)
+		return;
+
+	if (a->removed_cb && a->removed_cb != b->removed_cb)
+		return;
+
+	free(a->iface);
+	free(a);
+
+	proxy_cbs = g_slist_remove(proxy_cbs, data);
+}
+
+void unregister_proxy_cb(const char *iface, void (*added_cb)(GDBusProxy *proxy),
+					void (*removed_cb)(GDBusProxy *proxy))
+{
+	struct proxy_cbs p;
+
+	p.iface = strdup(iface);
+	p.added_cb = added_cb;
+	p.removed_cb = removed_cb;
+
+	g_slist_foreach(proxy_cbs, unregister_proxy_cb_foreach, &p);
+
+	free(p.iface);
+}
+
 static void proxy_added(GDBusProxy *proxy, void *user_data)
 {
 	const char *interface;
+	GSList *l;
 
 	interface = g_dbus_proxy_get_interface(proxy);
 
@@ -88,6 +144,13 @@ static void proxy_added(GDBusProxy *proxy, void *user_data)
 	else if (!strcmp(interface, "org.bluez.Device1"))
 		dev_list = g_slist_append(dev_list, proxy);
 
+	for (l = proxy_cbs; l; l = g_slist_next(l)) {
+		struct proxy_cbs *cbs = l->data;
+
+		if (cbs->added_cb && !strcmp(interface, cbs->iface))
+			cbs->added_cb(proxy);
+	}
+
 	if (verbose)
 		printf("DBUS Proxy added: %s\n", interface);
 }
@@ -95,11 +158,19 @@ static void proxy_added(GDBusProxy *proxy, void *user_data)
 static void proxy_removed(GDBusProxy *proxy, void *user_data)
 {
 	const char *interface;
+	GSList *l;
 
 	interface = g_dbus_proxy_get_interface(proxy);
 
 	if (!strcmp(interface, "org.bluez.Device1"))
 		dev_list = g_slist_remove(dev_list, proxy);
+
+	for (l = proxy_cbs; l; l = g_slist_next(l)) {
+		struct proxy_cbs *cbs = l->data;
+
+		if (cbs->removed_cb && !strcmp(interface, cbs->iface))
+			cbs->removed_cb(proxy);
+	}
 
 	if (verbose)
 		printf("DBUS Proxy removed: %s\n", interface);

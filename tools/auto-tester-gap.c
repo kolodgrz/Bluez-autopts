@@ -395,6 +395,26 @@ static void stop_advertising(GDBusProxy *adv_proxy, uint8_t *data, uint16_t len)
 					CONTROLLER_INDEX, BTP_STATUS_FAILED);
 }
 
+static void device_found_ev(GDBusProxy *proxy)
+{
+	struct gap_device_found_ev ev;
+	DBusMessageIter addr_iter;
+
+	memset(&ev, 0, sizeof(ev));
+
+	if (g_dbus_proxy_get_property(proxy, "Address", &addr_iter) == TRUE) {
+		const char *str;
+
+		dbus_message_iter_get_basic(&addr_iter, &str);
+
+		/* FIXME: get address type */
+		str2ba(str, (bdaddr_t *) ev.address);
+	}
+
+	send_msg(BTP_SERVICE_ID_GAP, GAP_EV_DEVICE_FOUND, CONTROLLER_INDEX,
+						sizeof(ev), (uint8_t *)&ev);
+}
+
 static void start_discovery_reply(DBusMessage *message, void *user_data)
 {
 	DBusError error;
@@ -413,6 +433,8 @@ static void start_discovery_reply(DBusMessage *message, void *user_data)
 
 	if (verbose)
 		printf("Discovery started\n");
+
+	register_proxy_cb("org.bluez.Device1", device_found_ev, NULL);
 
 	send_status(BTP_SERVICE_ID_GAP, GAP_START_DISCOVERY, CONTROLLER_INDEX,
 							BTP_STATUS_SUCCESS);
@@ -449,6 +471,8 @@ static void stop_discovery_reply(DBusMessage *message, void *user_data)
 
 	if (verbose)
 		printf("Discovery stopped\n");
+
+	unregister_proxy_cb("org.bluez.Device1", device_found_ev, NULL);
 
 	send_status(BTP_SERVICE_ID_GAP, GAP_STOP_DISCOVERY, CONTROLLER_INDEX,
 							BTP_STATUS_SUCCESS);

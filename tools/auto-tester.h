@@ -148,6 +148,20 @@ struct gap_disconnect_cmd {
 
 /* GAP Events*/
 
+#define GAP_DEVICE_FOUND_FLAG_RSSI	0x01
+#define GAP_DEVICE_FOUND_FLAG_AD	0x02
+#define GAP_DEVICE_FOUND_FLAG_SD	0x04
+
+#define GAP_EV_DEVICE_FOUND		0x81
+struct gap_device_found_ev {
+	uint8_t  address[6];
+	uint8_t  address_type;
+	int8_t   rssi;
+	uint8_t  flags;
+	uint16_t eir_data_len;
+	uint8_t  eir_data[0];
+} __attribute__((packed));
+
 #define GAP_EV_DEVICE_CONNECTED		0x82
 struct gap_device_connected_ev {
 	uint8_t address[6];
@@ -179,3 +193,8 @@ void handle_gap(GDBusProxy *adapter_proxy, GDBusProxy *adv_proxy,
 		GSList *dev_list, uint8_t op, uint8_t *data, uint16_t len);
 
 uint32_t get_current_settings();
+
+void register_proxy_cb(const char *iface, void (*added_cb)(GDBusProxy *proxy),
+					void (*removed_cb)(GDBusProxy *proxy));
+void unregister_proxy_cb(const char *iface, void (*added_cb)(GDBusProxy *proxy),
+					void (*removed_cb)(GDBusProxy *proxy));
