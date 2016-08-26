@@ -38,6 +38,7 @@
 
 #define ADVERTISE_PATH "/org/bluez/tester"
 #define ADVERTISEMENT_BASE_NAME "org.bluez.LEAdvertisement"
+#define AGENT_INTERFACE "org.bluez.Agent1"
 
 #define AD_TYPE_BROADCAST 0
 #define AD_TYPE_PERIPHERAL 1
@@ -51,6 +52,7 @@ struct advertise {
 };
 
 static DBusConnection *dbus_conn;
+static GDBusProxy *agent_proxy;
 
 static GSList *advertises = NULL;
 
@@ -707,9 +709,91 @@ reply:
 									status);
 }
 
-uint8_t handle_gap_register(DBusConnection *conn)
+/*
+ * BlueZ D-Bus Agent
+ */
+
+const char *io_capability;
+
+static void register_agent_setup(DBusMessageIter *iter, void *user_data)
+{
+	const char *path = ADVERTISE_PATH;
+
+	dbus_message_iter_append_basic(iter, DBUS_TYPE_OBJECT_PATH, &path);
+	dbus_message_iter_append_basic(iter, DBUS_TYPE_STRING, &io_capability);
+}
+
+static void register_agent_reply(DBusMessage *message, void *user_data)
+{
+	DBusError error;
+
+	dbus_error_init(&error);
+
+	if (dbus_set_error_from_message(&error, message) == FALSE) {
+		if (verbose)
+			printf("Agent registered\n");
+
+		send_status(BTP_SERVICE_ID_GAP, GAP_SET_IO_CAP,
+					CONTROLLER_INDEX, BTP_STATUS_SUCCESS);
+		return;
+	}
+
+	if (verbose)
+		printf("Failed to register agent: %s\n", error.name);
+
+	dbus_error_free(&error);
+
+	send_status(BTP_SERVICE_ID_GAP, GAP_SET_IO_CAP, CONTROLLER_INDEX,
+							BTP_STATUS_FAILED);
+}
+
+static void handle_set_io_cap(uint8_t *data, uint16_t len)
+{
+	const struct gap_set_io_cap_cmd *cmd = (void *) data;
+	const char *io_caps[] = { "DisplayOnly", "DisplayYesNo", "KeyboardOnly",
+					"NoInputNoOutput", "KeyboardDisplay" };
+
+	io_capability = strdup(io_caps[cmd->io_cap]);
+
+	if (g_dbus_proxy_method_call(agent_proxy, "RegisterAgent",
+					register_agent_setup,
+					register_agent_reply,
+					NULL, NULL) == TRUE) {
+		return;
+	}
+
+	send_status(BTP_SERVICE_ID_GAP, GAP_SET_IO_CAP, CONTROLLER_INDEX,
+							BTP_STATUS_FAILED);
+}
+
+static DBusMessage *agent_release(DBusConnection *conn,
+					DBusMessage *msg, void *user_data)
+{
+	if (verbose)
+		printf("Agent released\n");
+
+	return dbus_message_new_method_return(msg);
+}
+
+static const GDBusMethodTable agent_methods[] = {
+	{ GDBUS_METHOD("Release", NULL, NULL, agent_release) },
+	{ }
+};
+
+uint8_t handle_gap_register(DBusConnection *conn, GDBusProxy *agent_manager)
 {
 	dbus_conn = conn;
+	agent_proxy = agent_manager;
+
+	/* Register Agent */
+	if (!g_dbus_register_interface(dbus_conn, ADVERTISE_PATH,
+					AGENT_INTERFACE, agent_methods,
+					NULL, NULL, NULL, NULL)) {
+		if (verbose)
+			printf("D-Bus failed to register %s interface\n",
+					AGENT_INTERFACE);
+		return BTP_STATUS_FAILED;
+	}
 
 	return BTP_STATUS_SUCCESS;
 }
@@ -744,6 +828,9 @@ void handle_gap(GDBusProxy *adapter_proxy, GDBusProxy *adv_proxy,
 		break;
 	case GAP_DISCONNECT:
 		handle_disconnect(dev_list, data, len);
+		break;
+	case GAP_SET_IO_CAP:
+		handle_set_io_cap(data, len);
 		break;
 	default:
 		send_status(BTP_SERVICE_ID_GAP, op, CONTROLLER_INDEX,

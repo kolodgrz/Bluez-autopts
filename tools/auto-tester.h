@@ -146,6 +146,17 @@ struct gap_disconnect_cmd {
 	uint8_t  address[6];
 } __attribute__((packed));
 
+#define GAP_IO_CAP_DISPLAY_ONLY		0
+#define GAP_IO_CAP_DISPLAY_YESNO	1
+#define GAP_IO_CAP_KEYBOARD_ONLY	2
+#define GAP_IO_CAP_NO_INPUT_OUTPUT	3
+#define GAP_IO_CAP_KEYBOARD_DISPLAY	4
+
+#define GAP_SET_IO_CAP			0x10
+struct gap_set_io_cap_cmd {
+	uint8_t io_cap;
+} __attribute__((packed));
+
 /* GAP Events*/
 
 #define GAP_DEVICE_FOUND_FLAG_RSSI	0x01
@@ -188,7 +199,8 @@ void send_msg(uint8_t service, uint8_t opcode, uint8_t index, uint16_t len,
 void send_status(uint8_t service, uint8_t opcode, uint8_t index,
 								uint8_t status);
 void register_prop_cb(const char *iface, char *prop, void cb(void));
-uint8_t handle_gap_register(DBusConnection *dbus_conn);
+uint8_t handle_gap_register(DBusConnection *dbus_conn,
+						GDBusProxy *agent_manager);
 void handle_gap(GDBusProxy *adapter_proxy, GDBusProxy *adv_proxy,
 		GSList *dev_list, uint8_t op, uint8_t *data, uint16_t len);
 

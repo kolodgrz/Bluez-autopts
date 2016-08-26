@@ -47,6 +47,7 @@ static int btp_fd = 0;
 static GMainLoop *main_loop;
 static GDBusProxy *adapter_proxy;
 static GDBusProxy *adv_proxy;
+static GDBusProxy *agent_manager;
 static GSList *dev_list;
 static DBusConnection *dbus_conn;
 
@@ -143,6 +144,8 @@ static void proxy_added(GDBusProxy *proxy, void *user_data)
 		adv_proxy = proxy;
 	else if (!strcmp(interface, "org.bluez.Device1"))
 		dev_list = g_slist_append(dev_list, proxy);
+	else if (!strcmp(interface, "org.bluez.AgentManager1"))
+		agent_manager = proxy;
 
 	for (l = proxy_cbs; l; l = g_slist_next(l)) {
 		struct proxy_cbs *cbs = l->data;
@@ -377,7 +380,7 @@ static void core_reg_svc(uint8_t *data, uint16_t len)
 			status = BTP_STATUS_FAILED;
 			break;
 		}
-		status = handle_gap_register(dbus_conn);
+		status = handle_gap_register(dbus_conn, agent_manager);
 		break;
 	default:
 		status = BTP_STATUS_FAILED;
