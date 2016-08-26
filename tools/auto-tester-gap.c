@@ -42,6 +42,8 @@
 #define AD_TYPE_BROADCAST 0
 #define AD_TYPE_PERIPHERAL 1
 
+#define GAP_DISCOVERY_AUTO (GAP_DISCOVERY_FLAG_LE | GAP_DISCOVERY_FLAG_BREDR)
+
 struct advertise {
 	char *name;
 	uint8_t type;
@@ -440,15 +442,87 @@ static void start_discovery_reply(DBusMessage *message, void *user_data)
 							BTP_STATUS_SUCCESS);
 }
 
+static void append_variant(DBusMessageIter *iter, int type, void *val)
+{
+	DBusMessageIter value;
+	char sig[2] = { type, '\0' };
+
+	dbus_message_iter_open_container(iter, DBUS_TYPE_VARIANT, sig, &value);
+
+	dbus_message_iter_append_basic(&value, type, val);
+
+	dbus_message_iter_close_container(iter, &value);
+}
+
+static void dict_append_entry(DBusMessageIter *dict, const char *key,
+							int type, void *val)
+{
+	DBusMessageIter entry;
+
+	if (type == DBUS_TYPE_STRING) {
+		const char *str = *((const char **) val);
+
+		if (str == NULL)
+			return;
+	}
+
+	dbus_message_iter_open_container(dict, DBUS_TYPE_DICT_ENTRY,
+							NULL, &entry);
+
+	dbus_message_iter_append_basic(&entry, DBUS_TYPE_STRING, &key);
+
+	append_variant(&entry, type, val);
+
+	dbus_message_iter_close_container(dict, &entry);
+}
+
+static char *discovery_transport;
+
+static void discovery_filter_setup(DBusMessageIter *iter, void *user_data)
+{
+	const uint8_t *flags = user_data;
+	DBusMessageIter dict;
+
+	dbus_message_iter_open_container(iter, DBUS_TYPE_ARRAY,
+				DBUS_DICT_ENTRY_BEGIN_CHAR_AS_STRING
+				DBUS_TYPE_STRING_AS_STRING
+				DBUS_TYPE_VARIANT_AS_STRING
+				DBUS_DICT_ENTRY_END_CHAR_AS_STRING, &dict);
+
+	/*
+	 * TODO: Handle GAP_DISCOVERY_FLAG_LIMITED and
+	 * GAP_DISCOVERY_FLAG_LE_ACTIVE_SCAN flags.
+	 */
+	if ((*flags & GAP_DISCOVERY_AUTO) == GAP_DISCOVERY_AUTO)
+		discovery_transport = strdup("auto");
+	else if (*flags & GAP_DISCOVERY_FLAG_LE)
+		discovery_transport = strdup("le");
+	else
+		discovery_transport = strdup("bredr");
+
+	dict_append_entry(&dict, "Transport", DBUS_TYPE_STRING,
+							&discovery_transport);
+
+	dbus_message_iter_close_container(iter, &dict);
+}
+
 static void handle_start_discovery(GDBusProxy *adapter_proxy, uint8_t *data,
 								uint16_t len)
 {
+	struct gap_start_discovery_cmd *cmd = (void *) data;
+
+	if (g_dbus_proxy_method_call(adapter_proxy, "SetDiscoveryFilter",
+						discovery_filter_setup, NULL,
+						&cmd->flags, NULL) == FALSE) {
+		goto fail;
+	}
+
 	if (g_dbus_proxy_method_call(adapter_proxy, "StartDiscovery", NULL,
 							start_discovery_reply,
 							NULL, NULL) == TRUE) {
 		return;
 	}
-
+fail:
 	send_status(BTP_SERVICE_ID_GAP, GAP_START_DISCOVERY, CONTROLLER_INDEX,
 							BTP_STATUS_FAILED);
 }
@@ -473,6 +547,9 @@ static void stop_discovery_reply(DBusMessage *message, void *user_data)
 		printf("Discovery stopped\n");
 
 	unregister_proxy_cb("org.bluez.Device1", device_found_ev, NULL);
+
+	g_free(discovery_transport);
+	discovery_transport = NULL;
 
 	send_status(BTP_SERVICE_ID_GAP, GAP_STOP_DISCOVERY, CONTROLLER_INDEX,
 							BTP_STATUS_SUCCESS);
