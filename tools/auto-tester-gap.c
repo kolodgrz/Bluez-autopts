@@ -157,6 +157,22 @@ static void set_powered(GDBusProxy *adapter_proxy, uint8_t *data, uint16_t len)
 					UINT_TO_PTR(GAP_SET_POWERED), NULL);
 }
 
+static void set_connectable(uint8_t *data, uint16_t len)
+{
+	struct gap_set_connectable_cmd *cmd = (void *) data;
+	struct gap_set_connectable_rp rp;
+
+	if (cmd->connectable)
+		gap_settings |= 1 << GAP_SETTINGS_CONNECTABLE;
+	else
+		gap_settings &= ~(1 << GAP_SETTINGS_CONNECTABLE);
+
+	rp.current_settings = get_current_settings() | gap_settings;
+
+	send_msg(BTP_SERVICE_ID_GAP, GAP_SET_CONNECTABLE, CONTROLLER_INDEX,
+						sizeof(rp), (uint8_t *) &rp);
+}
+
 static void adv_reg_setup(DBusMessageIter *iter, void *user_data)
 {
 	DBusMessageIter opt;
@@ -579,6 +595,9 @@ void handle_gap(GDBusProxy *adapter_proxy, GDBusProxy *adv_proxy,
 		break;
 	case GAP_SET_POWERED:
 		set_powered(adapter_proxy, data, len);
+		break;
+	case GAP_SET_CONNECTABLE:
+		set_connectable(data, len);
 		break;
 	case GAP_START_ADVERTISING:
 		start_advertising(adv_proxy, data, len);

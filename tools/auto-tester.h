@@ -106,6 +106,14 @@ struct gap_set_powered_rp {
 	uint32_t current_settings;
 } __attribute__((packed));
 
+#define GAP_SET_CONNECTABLE		0x06
+struct gap_set_connectable_cmd {
+	uint8_t connectable;
+} __attribute__((packed));
+struct gap_set_connectable_rp {
+	uint32_t current_settings;
+} __attribute__((packed));
+
 #define GAP_START_ADVERTISING	0x0a
 struct gap_start_advertising_cmd {
 	uint8_t adv_data_len;
